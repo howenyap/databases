@@ -1,0 +1,161 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+:root{--background:#fff;--foreground:#18181b;--muted-foreground:#71717a;--card:#fafafa;--card-foreground:#18181b;--border:#e4e4e7;--ring:#a1a1aa;--secondary:#f4f4f5;--secondary-foreground:#27272a;--primary:#2563eb;--primary-foreground:#fff;--success:#16a34a;--destructive:#dc2626;--radius:10px;--font-sans:system-ui,-apple-system,sans-serif;--font-mono:ui-monospace,Menlo,monospace}
+:root.dark{color-scheme:dark;--background:#09090b;--foreground:#fafafa;--muted-foreground:#a1a1aa;--card:#18181b;--card-foreground:#fafafa;--border:#27272a;--ring:#52525b;--secondary:#27272a;--secondary-foreground:#e4e4e7;--primary:#3b82f6;--success:#22c55e;--destructive:#ef4444}
+body{background:var(--background);max-width:728px;margin:32px auto!important;padding:0 16px}
+
+  body { margin: 0; font-family: var(--font-sans); color: var(--foreground); }
+  .wrap { display: flex; flex-direction: column; gap: 14px; }
+  .meta { font-size: 13px; color: var(--muted-foreground); display: flex; justify-content: space-between; align-items: center; }
+  .score { font-family: var(--font-mono); font-size: 13px; }
+  .theme { font: inherit; font-size: 12px; padding: 3px 9px; margin-left: 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); color: var(--foreground); cursor: pointer; }
+  .bar { height: 4px; background: var(--secondary); border-radius: 2px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--primary); width: 0; transition: width .25s; }
+  .q { background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .q h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; line-height: 1.4; }
+  .q .ts { font-size: 12px; color: var(--muted-foreground); font-family: var(--font-mono); margin-bottom: 10px; }
+  .opts { display: flex; flex-direction: column; gap: 6px; }
+  button.opt { text-align: left; font: inherit; font-size: 14px; padding: 9px 12px; border-radius: calc(var(--radius) - 2px);
+    border: 1px solid var(--border); background: var(--background); color: var(--foreground); cursor: pointer; line-height: 1.35; }
+  button.opt:hover:not(:disabled) { border-color: var(--ring); }
+  button.opt:disabled { cursor: default; }
+  button.opt.right { border-color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+  button.opt.wrong { border-color: var(--destructive); background: var(--destructive-surface, color-mix(in srgb, var(--destructive) 14%, transparent)); }
+  button.opt.dim { opacity: .55; }
+  button.opt.sel { border-color: var(--primary); }
+  .exp { display: none; margin-top: 10px; font-size: 13.5px; line-height: 1.5; padding: 10px 12px; border-radius: calc(var(--radius) - 2px); background: var(--secondary); color: var(--secondary-foreground); }
+  .exp.show { display: block; }
+  .exp b.ok { color: var(--success); } .exp b.no { color: var(--destructive); }
+  textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; padding: 9px 12px; border-radius: calc(var(--radius) - 2px);
+    border: 1px solid var(--border); background: var(--background); color: var(--foreground); min-height: 64px; resize: vertical; }
+  .act { display: flex; gap: 6px; margin-top: 8px; }
+  .act button { font: inherit; font-size: 13px; padding: 7px 14px; border-radius: calc(var(--radius) - 2px); border: 1px solid var(--border); background: var(--primary); color: var(--primary-foreground); cursor: pointer; }
+  .act button.alt { background: var(--background); color: var(--foreground); }
+  .act button:disabled { opacity: .5; cursor: default; }
+  .done { display: none; text-align: center; padding: 16px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--border); }
+  .done.show { display: block; }
+  .done .big { font-size: 28px; font-weight: 700; font-family: var(--font-mono); }
+  .done button { margin-top: 10px; font: inherit; font-size: 13px; padding: 7px 14px; border-radius: calc(var(--radius) - 2px); border: 1px solid var(--border); background: var(--primary); color: var(--primary-foreground); cursor: pointer; }
+</style></head>
+<body>
+<div class="wrap">
+  <div class="meta"><span>CMU 15-445 #14: Query Execution Part 2</span><span><span class="score" id="score">0 / 0</span><button class="theme" id="theme"></button></span></div>
+  <div class="bar"><div id="prog"></div></div>
+  <div id="qs"></div>
+  <div class="done" id="done"><div class="big" id="final"></div><div id="verdict" style="margin-top:4px;color:var(--muted-foreground);font-size:14px"></div><button id="retry">Retry</button></div>
+</div>
+<script>
+// kind: "one" = pick one, "many" = select all that apply, "open" = write an answer, then grade yourself
+const Q = [
+ {kind:"one", ts:"10:19", q:"Which process model does Postgres use?",
+  o:["Process per worker","Thread per worker","Embedded","Coroutine per worker"], a:0,
+  e:"Postgres forks one OS process per worker, and the workers share data through shared memory. It predates standardized POSIX threads, when fork was the only thing that behaved the same on every Unix."},
+ {kind:"one", ts:"23:33", q:"What's an advantage of process-per-worker over thread-per-worker?",
+  o:["Cheaper context switches","No need for shared memory","One worker crashing doesn't take down the whole DBMS","The DBMS controls scheduling instead of the OS"], a:2,
+  e:"Each process has its own address space, so a segfault kills only that worker, and the postmaster replaces it. In a threaded DBMS, one crashing thread takes down the whole process. The other options describe advantages of threads."},
+ {kind:"one", ts:"19:24", q:"In an embedded DBMS like SQLite or DuckDB, who provides the threads that run queries?",
+  o:["A dedicated DBMS worker pool","The OS, through a dispatcher process","The application that links the library","A separate database server"], a:2,
+  e:"The DBMS is a library in the application's address space, and the application's thread calls in and runs the query. SQLite has no worker threads of its own, not even background ones."},
+ {kind:"one", ts:"29:50", q:"Which kind of parallelism lowers the latency of one long-running analytical query?",
+  o:["Inter-query","Intra-query","Both equally","Neither"], a:1,
+  e:"Intra-query splits one query across workers, which cuts its latency. Inter-query runs different queries at once, which raises throughput. MySQL has only inter-query, so one query uses one core even on a 1000-core machine."},
+ {kind:"one", ts:"39:53", q:"Which type of exchange operator combines results from several workers into one output stream?",
+  o:["Distribute","Repartition","Gather","Broadcast"], a:2,
+  e:"Gather takes N streams to 1. Distribute splits 1 stream into N, and Repartition reshuffles N streams into M."},
+ {kind:"one", ts:"42:30", q:"A join's output is pipelined straight into a projection on another worker, without materializing in between. What's this called?",
+  o:["Intra-operator (horizontal)","Inter-operator (vertical)","Bushy","Inter-query"], a:1,
+  e:"Inter-operator (vertical, or pipelined) parallelism runs different operators at the same time on different workers, with tuples streaming between them. The lecture's example puts an expensive UDF on a second worker."},
+ {kind:"many", ts:"45:39", q:"Select all that are true:",
+  o:["Intra-operator runs the same operator on disjoint subsets of the data","Bushy is a hybrid of intra-operator and inter-operator","The three types are mutually exclusive; a DBMS must pick one","Vertical parallelism is widely used in stream processing"], a:[0,1,3],
+  e:"A, B and D are true. The types aren't mutually exclusive: real systems combine them in one plan, which is what bushy parallelism is."},
+ {kind:"one", ts:"52:31", q:"A 1 TB database is mirrored with RAID 1 across 4 disks. Which is true?",
+  o:["Each disk needs about 250 GB","Reads and writes both get about 4x faster","Each disk needs the full 1 TB; reads can scale but writes don't","It gives no fault tolerance"], a:2,
+  e:"In a mirror, every disk holds a full copy. Any disk can serve a read, but every write must reach all four disks and fsync on each before it's acknowledged."},
+ {kind:"open", ts:"50:27", q:"With multi-disk parallelism (RAID or a storage appliance), why can't the DBMS assign workers to specific disks?",
+  e:"The striping or mirroring happens in the OS or hardware below the DBMS, and it's transparent. The DBMS sees one logical device and doesn't know which disk holds which page."},
+ {kind:"open", ts:"48:18", q:"Why might adding more worker threads not speed up queries at all, and what does the lecture suggest doing about it?",
+  e:"If disk I/O is the bottleneck, extra threads just wait on the same disk. Use I/O parallelism: spread the database across several devices, with multi-disk setups (RAID) or database partitioning."}
+];
+const L = "ABCD";
+let answered = 0, correct = 0;
+const qs = document.getElementById("qs");
+function finish(exp, ok, msg, e) {
+  answered++; if (ok) correct++;
+  exp.innerHTML = `<b class="${ok?'ok':'no'}">${msg}</b> ${e}`;
+  exp.classList.add("show"); update();
+}
+function render() {
+  answered = 0; correct = 0; qs.innerHTML = "";
+  document.getElementById("done").classList.remove("show");
+  update();
+  Q.forEach((it, i) => {
+    const d = document.createElement("div"); d.className = "q"; d.style.marginBottom = "12px";
+    d.innerHTML = `<h3>${i+1}. ${it.q}</h3><div class="ts">around ${it.ts}</div><div class="opts"></div><div class="act"></div><div class="exp"></div>`;
+    const opts = d.querySelector(".opts"), act = d.querySelector(".act"), exp = d.querySelector(".exp");
+    if (it.kind === "open") {
+      const ta = document.createElement("textarea"); ta.placeholder = "Write your answer, then reveal the expected one.";
+      opts.appendChild(ta);
+      const show = document.createElement("button"); show.textContent = "Show answer";
+      show.onclick = () => {
+        show.remove(); ta.disabled = true;
+        exp.innerHTML = `<b>Expected:</b> ${it.e}`; exp.classList.add("show");
+        [["I got the key idea", true], ["I missed it", false]].forEach(([label, ok]) => {
+          const b = document.createElement("button"); b.textContent = label; if (!ok) b.className = "alt";
+          b.onclick = () => { act.remove(); finish(exp, ok, ok ? "Correct." : "Not quite.", it.e); };
+          act.appendChild(b);
+        });
+      };
+      act.appendChild(show);
+    } else {
+      const picked = new Set();
+      const btns = it.o.map((t, j) => {
+        const b = document.createElement("button"); b.className = "opt"; b.textContent = `${L[j]}) ${t}`;
+        opts.appendChild(b); return b;
+      });
+      const right = it.kind === "many" ? it.a : [it.a];
+      const grade = () => {
+        btns.forEach((x, k) => { x.disabled = true; x.classList.add(right.includes(k) ? "right" : picked.has(k) ? "wrong" : "dim"); });
+        const ok = picked.size === right.length && right.every(k => picked.has(k));
+        const key = right.map(k => L[k]).join(", ");
+        finish(exp, ok, ok ? "Correct." : `Not quite. The answer is ${key}.`, it.e);
+      };
+      if (it.kind === "many") {
+        btns.forEach((b, j) => b.onclick = () => {
+          picked.has(j) ? picked.delete(j) : picked.add(j);
+          b.classList.toggle("sel", picked.has(j)); check.disabled = picked.size === 0;
+        });
+        const check = document.createElement("button"); check.textContent = "Check"; check.disabled = true;
+        check.onclick = () => { act.remove(); btns.forEach(b => b.classList.remove("sel")); grade(); };
+        act.appendChild(check);
+      } else {
+        act.remove();
+        btns.forEach((b, j) => b.onclick = () => { picked.add(j); grade(); });
+      }
+    }
+    qs.appendChild(d);
+  });
+}
+function update() {
+  document.getElementById("score").textContent = `${correct} / ${answered}`;
+  document.getElementById("prog").style.width = (answered / Q.length * 100) + "%";
+  if (answered === Q.length) {
+    document.getElementById("final").textContent = `${correct} / ${Q.length}`;
+    document.getElementById("verdict").textContent = correct === Q.length ? "Perfect score. Ready for the execution homework." : correct >= 8 ? "Solid. Rewatch the timestamps for the ones you missed." : "Worth another watch, starting from the questions you missed.";
+    document.getElementById("done").classList.add("show");
+  }
+}
+document.getElementById("retry").onclick = render;
+const root = document.documentElement, themeBtn = document.getElementById("theme");
+function setTheme(dark) {
+  root.classList.toggle("dark", dark);
+  themeBtn.textContent = dark ? "☀ Light" : "☾ Dark";
+  try { localStorage.setItem("quiz-theme", dark ? "dark" : "light"); } catch {}
+}
+themeBtn.onclick = () => setTheme(!root.classList.contains("dark"));
+// Storage can be blocked (privacy settings); fall back to light instead of breaking the quiz.
+let saved = null; try { saved = localStorage.getItem("quiz-theme"); } catch {}
+setTheme(saved === "dark");
+render();
+</script>
+</body></html>
